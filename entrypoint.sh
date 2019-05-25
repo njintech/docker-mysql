@@ -12,6 +12,21 @@ DB_REMOTE_ROOT_HOST=${DB_REMOTE_ROOT_HOST:-"172.17.0.1"}
 MYSQL_CHARSET=${MYSQL_CHARSET:-"utf8"}
 MYSQL_COLLATION=${MYSQL_COLLATION:-"utf8_unicode_ci"}
 
+map_uidgid() {
+    USERMAP_ORIG_UID=$(id -u ${MYSQL_USER})
+    USERMAP_ORIG_GID=$(id -g ${MYSQL_USER})
+
+    USERMAP_GID=$(stat -c%u "$MYSQL_DATA_DIR")
+    USERMAP_UID=$(stat -c%g "$MYSQL_DATA_DIR")
+
+    if [[ ${USERMAP_UID} != ${USERMAP_ORIG_UID} ]] || [[ ${USERMAP_GID} != ${USERMAP_ORIG_GID} ]]; then
+      echo "Mapping UID and GID for ${MYSQL_USER}:${MYSQL_USER} to $USERMAP_UID:$USERMAP_GID"
+
+      groupmod -o -g ${USERMAP_GID} ${MYSQL_USER}
+      sed -i -e "s|:${USERMAP_ORIG_UID}:${USERMAP_GID}:|:${USERMAP_UID}:${USERMAP_GID}:|" /etc/passwd
+    fi
+}
+
 create_data_dir() {
   mkdir -p ${MYSQL_DATA_DIR}
   chmod -R 0700 ${MYSQL_DATA_DIR}
@@ -54,14 +69,14 @@ remove_debian_systen_maint_password() {
   # Due to the nature of docker we blank out the password such that the maintenance
   # user can login without a password.
   #
-  sed 's/password = .*/password = /g' -i /etc/mysql/debian.cnf
+  sed 's/password = .*/password = 1qaz2wsx/g' -i /etc/mysql/debian.cnf
 }
 
 initialize_mysql_database() {
   # initialize MySQL data directory
   if [ ! -d ${MYSQL_DATA_DIR}/mysql ]; then
     echo "Installing database..."
-    mysql_install_db --user=mysql >/dev/null 2>&1
+    mysqld --initialize-insecure --user=mysql >/dev/null 2>&1
 
     # start mysql server
     echo "Starting MySQL server..."
@@ -86,7 +101,7 @@ initialize_mysql_database() {
     ## the debian-sys-maint is used while creating users and database
     ## as well as to shut down or starting up the mysql server via mysqladmin
     echo "Creating debian-sys-maint user..."
-    mysql -uroot -e "GRANT ALL PRIVILEGES on *.* TO 'debian-sys-maint'@'localhost' IDENTIFIED BY '' WITH GRANT OPTION;"
+    mysql -uroot -e "GRANT ALL PRIVILEGES on *.* TO 'debian-sys-maint'@'localhost' IDENTIFIED BY '1qaz2wsx' WITH GRANT OPTION;"
 
     if [ -n "${DB_REMOTE_ROOT_NAME}" -a -n "${DB_REMOTE_ROOT_HOST}" ]; then
       echo "Creating remote user \"${DB_REMOTE_ROOT_NAME}\" with root privileges..."
@@ -131,6 +146,7 @@ create_users_and_databases() {
   fi
 }
 
+map_uidgid
 create_data_dir
 create_run_dir
 create_log_dir
