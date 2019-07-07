@@ -1,4 +1,4 @@
-FROM ubuntu.user.base
+FROM ubuntu:16.04
 
 ENV MYSQL_USER=mysql \
     MYSQL_DATA_DIR=/var/lib/mysql \
